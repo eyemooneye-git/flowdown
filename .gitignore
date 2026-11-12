@@ -1,0 +1,29 @@
+# Rust 构建输出
+/target/
+
+# 编译/链接产生的中间文件
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.obj
+*.res
+
+# 编辑器与 Visual Studio
+# .vscode/
+.idea/
+.vs/
+*.user
+*.suo
+
+# Windows / macOS 系统文件
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# 临时文件
+*.tmp
+*.log
+
+# exe文件
+*.exe

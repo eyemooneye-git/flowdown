@@ -1,0 +1,42 @@
+[package]
+name = "flowdown"
+version = "1.0.0"
+edition = "2021"
+description = "FlowDown - a native Windows download manager with clipboard capture, multi-connection HTTP/FTP and BitTorrent support"
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+librqbit = { version = "9.1.0", default-features = false, features = ["default-tls"] }
+suppaftp = { version = "12.2.1", default-features = false }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "sync"] }
+ureq = { version = "2.12.1", default-features = false, features = ["tls", "gzip"] }
+url = "2"
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Globalization",
+    "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Com",
+    "Win32_System_DataExchange",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_Registry",
+    "Win32_System_SystemServices",
+    "Win32_System_Threading",
+    "Win32_System_Time",
+    "Win32_UI_Controls",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_Common",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

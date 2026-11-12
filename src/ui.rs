@@ -1748,10 +1748,11 @@ unsafe fn open_settings(owner: HWND) {
         bottom: 360,
     };
     AdjustWindowRectEx(&mut rect, style, 0, WS_EX_DLGMODALFRAME);
+    let dpi = GetDpiForWindow(owner).max(96);
     let mut owner_rect = RECT::default();
     GetWindowRect(owner, &mut owner_rect);
-    let width = rect.right - rect.left;
-    let height = rect.bottom - rect.top;
+    let width = scale(dpi, rect.right - rect.left);
+    let height = scale(dpi, rect.bottom - rect.top);
     let x = owner_rect.left + ((owner_rect.right - owner_rect.left) - width) / 2;
     let y = owner_rect.top + ((owner_rect.bottom - owner_rect.top) - height) / 2;
     EnableWindow(owner, 0);

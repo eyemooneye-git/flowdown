@@ -79,6 +79,7 @@ const ID_SETTINGS: usize = 1007;
 const ID_LIST: usize = 1008;
 const ID_PROGRESS: usize = 1009;
 const ID_STATUS: usize = 1010;
+const ID_EXIT: usize = 1011;
 
 const ID_SET_DIR: usize = 2000;
 const ID_SET_BROWSE: usize = 2001;
@@ -119,6 +120,7 @@ struct App {
     h_remove: HWND,
     h_folder: HWND,
     h_settings: HWND,
+    h_exit: HWND,
     h_list: HWND,
     h_progress: HWND,
     h_status: HWND,
@@ -446,6 +448,7 @@ unsafe fn on_create(hwnd: HWND) -> LRESULT {
         h_remove: std::ptr::null_mut(),
         h_folder: std::ptr::null_mut(),
         h_settings: std::ptr::null_mut(),
+        h_exit: std::ptr::null_mut(),
         h_list: std::ptr::null_mut(),
         h_progress: std::ptr::null_mut(),
         h_status: std::ptr::null_mut(),
@@ -561,6 +564,7 @@ unsafe fn on_command(hwnd: HWND, wparam: WPARAM) {
         ID_REMOVE => remove_selected(hwnd),
         ID_FOLDER => open_folder_for_selection(hwnd),
         ID_SETTINGS => open_settings(hwnd),
+        ID_EXIT => quit(hwnd),
         _ => {}
     }
 }
@@ -778,6 +782,7 @@ impl App {
             (ID_REMOVE, tr!("Remove", "移除")),
             (ID_FOLDER, tr!("Folder", "文件夹")),
             (ID_SETTINGS, tr!("Settings", "设置")),
+            (ID_EXIT, tr!("Exit", "退出")),
         ] {
             let control = child(
                 button.as_ptr(),
@@ -792,7 +797,8 @@ impl App {
                 ID_RESUME => self.h_resume = control,
                 ID_REMOVE => self.h_remove = control,
                 ID_FOLDER => self.h_folder = control,
-                _ => self.h_settings = control,
+                ID_SETTINGS => self.h_settings = control,
+                _ => self.h_exit = control,
             }
         }
         self.h_list = child(
@@ -913,6 +919,7 @@ unsafe fn layout(hwnd: HWND) {
                 app.h_remove,
                 app.h_folder,
                 app.h_settings,
+                app.h_exit,
                 app.h_list,
                 app.h_progress,
                 app.h_status,
@@ -921,9 +928,10 @@ unsafe fn layout(hwnd: HWND) {
     }) else {
         return;
     };
-    let h_status = controls[10];
-    let h_progress = controls[9];
-    let h_list = controls[8];
+    let h_status = controls[11];
+    let h_progress = controls[10];
+    let h_list = controls[9];
+    let h_exit = controls[8];
     let h_settings = controls[7];
     let h_folder = controls[6];
     let h_remove = controls[5];
@@ -943,7 +951,9 @@ unsafe fn layout(hwnd: HWND) {
     let row = scale(dpi, 26);
     let label_w = scale(dpi, 34);
     let button_w = scale(dpi, 70);
-    let buttons = [h_add, h_pause, h_resume, h_remove, h_folder, h_settings];
+    let buttons = [
+        h_add, h_pause, h_resume, h_remove, h_folder, h_settings, h_exit,
+    ];
     let total_buttons = buttons.len() as i32 * button_w + (buttons.len() as i32 - 1) * gap;
     let url_x = pad + label_w + gap;
     let url_w = (width - pad - url_x - total_buttons - gap).max(scale(dpi, 120));

@@ -84,6 +84,14 @@ impl Progress {
     }
 }
 
+/// Live seed/peer counts reported by the BitTorrent backend.
+#[derive(Clone, Copy, Default, Debug)]
+pub struct PeerInfo {
+    pub seeders: u32,
+    pub peers: u32,
+    pub seen: u32,
+}
+
 #[derive(Default)]
 pub struct Control {
     cancel: AtomicBool,
@@ -134,6 +142,7 @@ pub struct Task {
     pub connections: usize,
     pub progress: Arc<Progress>,
     pub control: Arc<Control>,
+    pub peer_info: Option<PeerInfo>,
 }
 
 impl Task {
@@ -149,6 +158,7 @@ impl Task {
             dest_path: self.dest_path.clone(),
             total: self.progress.total(),
             done: self.progress.done(),
+            peer_info: self.peer_info,
         }
     }
 }
@@ -165,6 +175,7 @@ pub struct TaskView {
     pub dest_path: Option<PathBuf>,
     pub total: u64,
     pub done: u64,
+    pub peer_info: Option<PeerInfo>,
 }
 
 impl TaskView {
@@ -318,6 +329,7 @@ impl DownloadManager {
             connections: options,
             progress: Arc::new(Progress::default()),
             control: Arc::new(Control::default()),
+            peer_info: None,
         };
         if let Ok(mut tasks) = self.store.lock() {
             tasks.push(task);

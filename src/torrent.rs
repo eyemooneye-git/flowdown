@@ -5,20 +5,41 @@
 //! torrent session; the UI talks to it through a lock-free command channel.
 
 use std::collections::{HashMap, HashSet};
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use librqbit::api::TorrentIdOrHash;
 use librqbit::{
-    AddTorrent, AddTorrentOptions, DhtSessionConfig, ManagedTorrent, Session, SessionOptions,
-    TorrentStatsState,
+    AddTorrent, AddTorrentOptions, DhtSessionConfig, ListenerOptions, ManagedTorrent, Session,
+    SessionOptions, TorrentStatsState,
 };
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::sync::Mutex as AsyncMutex;
 
-use crate::download::{update_task, TaskStatus, TaskStore};
+use crate::download::{update_task, PeerInfo, TaskStatus, TaskStore};
 use crate::{tr, trf};
+
+/// Public trackers added to every non-private torrent. A magnet link without
+/// `tr=` parameters can only find peers through DHT, which is unreliable on
+/// many networks (especially behind NAT or with UDP filtering). Trackers give
+/// metadata resolution a second, usually faster, source of peers.
+const DEFAULT_TRACKERS: &[&str] = &[
+    "udp://tracker.opentrackr.org:1337/announce",
+    "http://tracker.opentrackr.org:1337/announce",
+    "https://tracker.opentrackr.org:443/announce",
+    "udp://open.demonii.com:1337/announce",
+    "udp://tracker.torrent.eu.org:451/announce",
+    "https://tracker.torrent.eu.org/announce",
+    "http://open.tracker.cl:1337/announce",
+    "http://tracker.dler.org:6969/announce",
+];
+
+/// How long to wait for magnet metadata (the file list) before giving up.
+/// Without this, a magnet whose swarm is unreachable stays in "connecting"
+/// forever with no feedback.
+const METADATA_TIMEOUT: Duration = Duration::from_secs(90);
 
 enum Command {
     Add {
@@ -66,6 +87,21 @@ impl TorrentBackend {
                             persistence: None,
                             ..Default::default()
                         }),
+                        // Accept incoming peer connections. Outgoing-only
+                        // sessions miss every peer that only connects to
+                        // listening clients.
+                        listen: Some(ListenerOptions {
+                            listen_addr: SocketAddr::from(([0, 0, 0, 0], 0)),
+                            ipv4_only: true,
+                            ..Default::default()
+                        }),
+                        // Session-wide fallback trackers for trackers-less
+                        // magnet links. librqbit ignores these for private
+                        // torrents, so they can't break a private swarm.
+                        trackers: DEFAULT_TRACKERS
+                            .iter()
+                            .filter_map(|tracker| url::Url::parse(tracker).ok())
+                            .collect(),
                         ..Default::default()
                     };
                     let session = match Session::new_with_opts(default_dir.clone(), options).await {
@@ -252,16 +288,14 @@ async fn add_torrent(shared: Arc<Shared>, id: u64, url: String, dir: PathBuf, st
         output_folder: Some(output_folder),
         ..Default::default()
     };
-    let result = shared
-        .session
-        .clone()
-        .add_torrent(AddTorrent::from_url(url), Some(options))
-        .await;
+    let session = shared.session.clone();
+    let add = session.add_torrent(AddTorrent::from_url(url), Some(options));
+    let result = tokio::time::timeout(METADATA_TIMEOUT, add).await;
     if let Ok(mut adding) = shared.adding.lock() {
         adding.remove(&id);
     }
     let handle = match result {
-        Ok(response) => match response.into_handle() {
+        Ok(Ok(response)) => match response.into_handle() {
             Some(handle) => handle,
             None => {
                 set_error(
@@ -275,7 +309,7 @@ async fn add_torrent(shared: Arc<Shared>, id: u64, url: String, dir: PathBuf, st
                 return;
             }
         },
-        Err(error) => {
+        Ok(Err(error)) => {
             if shared.is_removed(id) {
                 return;
             }
@@ -285,6 +319,21 @@ async fn add_torrent(shared: Arc<Shared>, id: u64, url: String, dir: PathBuf, st
                 &trf!(
                     "Could not add torrent: {error:#}",
                     "无法添加种子：{error:#}"
+                ),
+            );
+            return;
+        }
+        Err(_) => {
+            if shared.is_removed(id) {
+                return;
+            }
+            set_error(
+                &shared.store,
+                id,
+                tr!(
+                    "Timed out resolving the torrent: no peers or trackers responded. \
+                     This swarm may only be reachable from clients such as Xunlei.",
+                    "解析种子信息超时：没有 peer 或 tracker 响应。该资源可能只能被迅雷等客户端下载。"
                 ),
             );
             return;
@@ -330,10 +379,16 @@ async fn monitor(shared: Arc<Shared>, id: u64, handle: Arc<ManagedTorrent>) {
         let error = stats.error.clone();
         let total = stats.total_bytes;
         let done = stats.progress_bytes;
+        let peer_info = stats.live.as_ref().map(|live| PeerInfo {
+            seeders: live.snapshot.peer_stats.live_seeders,
+            peers: live.snapshot.peer_stats.live,
+            seen: live.snapshot.peer_stats.seen,
+        });
 
         update_task(&shared.store, id, |task| {
             task.progress.set_total(total);
             task.progress.set_done(done);
+            task.peer_info = peer_info;
             if let Some(name) = name.as_ref().filter(|name| !name.is_empty()) {
                 task.name = name.clone();
             }

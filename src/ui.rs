@@ -833,13 +833,18 @@ impl App {
             extended as isize,
         );
 
-        let columns: [(&str, i32, i32); 6] = [
+        let columns: [(&str, i32, i32); 7] = [
             (tr!("Name", "名称"), scale(self.dpi, 250), LVCFMT_LEFT),
             (tr!("Size", "大小"), scale(self.dpi, 90), LVCFMT_RIGHT),
             (tr!("Progress", "进度"), scale(self.dpi, 82), LVCFMT_RIGHT),
             (tr!("Status", "状态"), scale(self.dpi, 100), LVCFMT_LEFT),
+            (
+                tr!("Seeds/Peers", "种子/连接"),
+                scale(self.dpi, 92),
+                LVCFMT_RIGHT,
+            ),
             (tr!("Speed", "速度"), scale(self.dpi, 92), LVCFMT_RIGHT),
-            (tr!("Link", "链接"), scale(self.dpi, 330), LVCFMT_LEFT),
+            (tr!("Link", "链接"), scale(self.dpi, 280), LVCFMT_LEFT),
         ];
         for (index, (name, width, align)) in columns.iter().enumerate() {
             let mut text: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
@@ -885,11 +890,15 @@ impl App {
                 1 => task.size_text(),
                 2 => task.progress_text(),
                 3 => task.status.label().to_owned(),
-                4 => match self.speeds.get(&task.id).copied() {
+                4 => match task.peer_info {
+                    Some(info) => format!("{} / {}", info.seeders, info.peers),
+                    None => String::new(),
+                },
+                5 => match self.speeds.get(&task.id).copied() {
                     Some(speed) if speed > 0 && task.status.is_active() => format_speed(speed),
                     _ => String::new(),
                 },
-                5 => task.display_url.clone(),
+                6 => task.display_url.clone(),
                 _ => String::new(),
             };
             self.disp_buf.clear();
@@ -1193,6 +1202,18 @@ unsafe fn refresh_status(_hwnd: HWND) {
             .and_then(|id| app.tasks.iter().find(|task| task.id == id))
         {
             let mut text = format!("{} — {}", task.name, task.detail());
+            if let Some(info) = task.peer_info {
+                text.push_str(&tr!(
+                    format!(
+                        " · {} seeds / {} peers / {} seen",
+                        info.seeders, info.peers, info.seen
+                    ),
+                    format!(
+                        " · {} 种子 / {} 连接 / 发现 {} 个",
+                        info.seeders, info.peers, info.seen
+                    )
+                ));
+            }
             let task_speed = app.speeds.get(&task.id).copied().unwrap_or(0);
             if task.status.is_active() && task_speed > 0 && task.total > task.done {
                 let seconds = (task.total - task.done) / task_speed;
